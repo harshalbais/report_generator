@@ -8,7 +8,7 @@ app = Flask(__name__)
 def home():
     return "Drone Report API Running 🚀"
 
-@app.route("/generate-report", methods=["POST"])
+@app.route("/generate-report", methods=["GET", "POST"])
 def generate_report():
     try:
         data = request.get_json()
