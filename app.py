@@ -215,17 +215,20 @@ The report has been generated successfully.
 
         # Send failure email safely
         try:
-            send_status_email(
-                subject="❌ Drone Report Generation Failed",
-                body=f"""
-Report Status: FAILED
+            print("email feature is temporarily down")
+#             send_status_email(
+#                 subject="❌ Drone Report Generation Failed",
+#                 body=f"""
+# Report Status: FAILED
 
-Error:
-{str(e)}
-"""
-            )
+# Error:
+# {str(e)}
+# """
+#             )
+        
         except Exception as email_error:
             print("⚠ Failure email also failed:", str(email_error))
 
         return jsonify({"error": str(e)}), 500
+
 
