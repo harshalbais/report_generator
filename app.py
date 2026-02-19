@@ -3,6 +3,51 @@ import os
 import json
 import shutil
 from report import generate_report_from_json
+import smtplib
+import os
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+
+
+def send_status_email(subject, body, attachment_path=None):
+    try:
+        sender_email = os.environ.get("EMAIL_USER")
+        sender_password = os.environ.get("EMAIL_PASS")
+
+        # 🔥 Multiple recipients (comma separated in ENV)
+        receiver_emails = os.environ.get("EMAIL_RECEIVERS", "")
+        receiver_list = [email.strip() for email in receiver_emails.split(",") if email.strip()]
+
+        if not receiver_list:
+            print("❌ No receiver emails configured")
+            return
+
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = ", ".join(receiver_list)
+        msg["Subject"] = subject
+
+        msg.attach(MIMEText(body, "plain"))
+
+        # 🔥 Attach PDF if provided
+        if attachment_path and os.path.exists(attachment_path):
+            with open(attachment_path, "rb") as f:
+                part = MIMEApplication(f.read(), Name=os.path.basename(attachment_path))
+                part["Content-Disposition"] = f'attachment; filename="{os.path.basename(attachment_path)}"'
+                msg.attach(part)
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.sendmail(sender_email, receiver_list, msg.as_string())
+        server.quit()
+
+        print("✅ Email sent to multiple recipients")
+
+    except Exception as e:
+        print("❌ Email failed:", e)
+
 
 app = Flask(__name__)
 
@@ -36,18 +81,25 @@ def upload_json():
 
 
 
-# ✅ 2️⃣ Generate Final Report (Auto Combine + Video Link)
 @app.route("/generate-report", methods=["POST"])
 def generate_report():
     try:
         video_link = request.json.get("video_link")
 
         if not video_link:
+            send_status_email(
+                subject="❌ Drone Report Failed",
+                body="Video link was not provided."
+            )
             return jsonify({"error": "Video link required"}), 400
 
         json_files = [f for f in os.listdir(TEMP_FOLDER) if f.endswith(".json")]
 
         if not json_files:
+            send_status_email(
+                subject="❌ Drone Report Failed",
+                body="No JSON files found in backend."
+            )
             return jsonify({"error": "No JSON files found"}), 400
 
         combined_data = {
@@ -60,7 +112,6 @@ def generate_report():
 
         first_drone_id = None
 
-        # 🔥 Combine all JSON files
         for i, file in enumerate(json_files):
             with open(os.path.join(TEMP_FOLDER, file)) as f:
                 data = json.load(f)
@@ -71,26 +122,35 @@ def generate_report():
                 if "violations" in data:
                     combined_data["violations"].extend(data["violations"])
 
-        # -----------------------------------
-        # 🔥 CLEAN DRONE ID (Remove _Number)
-        # -----------------------------------
         import re
-
         if first_drone_id:
             cleaned_name = re.sub(r'_\d+$', '', first_drone_id)
         else:
             cleaned_name = "Drone_Report"
 
-        # 🔥 Capitalize Each Word
         cleaned_name = cleaned_name.replace("_", " ").title().replace(" ", "_")
 
         combined_data["drone_id"] = cleaned_name
-
         output_path = f"{cleaned_name}.pdf"
 
         generate_report_from_json(combined_data, output_path)
 
-        # Cleanup temp folder
+        # ✅ SEND SUCCESS EMAIL BEFORE RETURN
+        send_status_email(
+            subject="✅ Drone Report Generated Successfully",
+            body=f"""
+Report Status: SUCCESS
+
+Drone ID: {cleaned_name}
+Total Violations: {len(combined_data['violations'])}
+Video Link: {video_link}
+
+The report has been generated successfully.
+""",
+            attachment_path=output_path
+        )
+
+        # Cleanup
         shutil.rmtree(TEMP_FOLDER)
         os.makedirs(TEMP_FOLDER, exist_ok=True)
 
@@ -102,10 +162,16 @@ def generate_report():
         )
 
     except Exception as e:
+
+        # ❌ SEND FAILURE EMAIL
+        send_status_email(
+            subject="❌ Drone Report Generation Failed",
+            body=f"""
+Report Status: FAILED
+
+Error:
+{str(e)}
+"""
+        )
+
         return jsonify({"error": str(e)}), 500
-
-
-
-
-
-
