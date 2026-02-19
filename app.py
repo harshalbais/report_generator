@@ -15,25 +15,25 @@ def home():
     return "Drone Report API Running 🚀"
 
 
-# ✅ 1️⃣ Upload JSON (multiple allowed)
 @app.route("/upload-json", methods=["POST"])
 def upload_json():
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file part"}), 400
+        data = request.get_json()
 
-        file = request.files['file']
+        if not data:
+            return jsonify({"error": "No JSON received"}), 400
 
-        if file.filename == "":
-            return jsonify({"error": "No selected file"}), 400
+        file_count = len(os.listdir(TEMP_FOLDER)) + 1
+        file_path = os.path.join(TEMP_FOLDER, f"report_{file_count}.json")
 
-        file_path = os.path.join(TEMP_FOLDER, file.filename)
-        file.save(file_path)
+        with open(file_path, "w") as f:
+            json.dump(data, f)
 
-        return jsonify({"message": f"{file.filename} uploaded successfully"}), 200
+        return jsonify({"message": "JSON stored in backend"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 # ✅ 2️⃣ Generate Final Report (Auto Combine + Video Link)
@@ -81,6 +81,7 @@ def generate_report():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 
