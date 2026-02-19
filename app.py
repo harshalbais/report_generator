@@ -8,6 +8,8 @@ import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from datetime import datetime
+
 
 def send_status_email(subject, body, attachment_path=None):
     import smtplib
@@ -226,3 +228,4 @@ Error:
             print("⚠ Failure email also failed:", str(email_error))
 
         return jsonify({"error": str(e)}), 500
+
