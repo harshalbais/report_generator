@@ -9,44 +9,44 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 
+def send_status_email(subject, body, recipients, attachment_path=None):
+    import smtplib
+    from email.message import EmailMessage
+    import os
 
-def send_status_email(subject, body, attachment_path=None):
     try:
-        sender_email = os.environ.get("EMAIL_USER")
-        sender_password = os.environ.get("EMAIL_PASS")
-
-        # 🔥 Multiple recipients (comma separated in ENV)
-        receiver_emails = os.environ.get("EMAIL_RECEIVERS", "")
-        receiver_list = [email.strip() for email in receiver_emails.split(",") if email.strip()]
-
-        if not receiver_list:
-            print("❌ No receiver emails configured")
-            return
-
-        msg = MIMEMultipart()
-        msg["From"] = sender_email
-        msg["To"] = ", ".join(receiver_list)
+        msg = EmailMessage()
         msg["Subject"] = subject
+        msg["From"] = os.environ.get("EMAIL_USER")
+        msg["To"] = ", ".join(recipients)
+        msg.set_content(body)
 
-        msg.attach(MIMEText(body, "plain"))
-
-        # 🔥 Attach PDF if provided
-        if attachment_path and os.path.exists(attachment_path):
+        # Attach file
+        if attachment_path:
             with open(attachment_path, "rb") as f:
-                part = MIMEApplication(f.read(), Name=os.path.basename(attachment_path))
-                part["Content-Disposition"] = f'attachment; filename="{os.path.basename(attachment_path)}"'
-                msg.attach(part)
+                file_data = f.read()
+                file_name = os.path.basename(attachment_path)
 
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+            msg.add_attachment(file_data,
+                               maintype="application",
+                               subtype="octet-stream",
+                               filename=file_name)
+
+        # SMTP with timeout
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
         server.starttls()
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, receiver_list, msg.as_string())
+        server.login(
+            os.environ.get("EMAIL_USER"),
+            os.environ.get("EMAIL_PASS")
+        )
+        server.send_message(msg)
         server.quit()
 
-        print("✅ Email sent to multiple recipients")
+        print("✅ Email sent successfully")
 
     except Exception as e:
-        print("❌ Email failed:", e)
+        print("❌ Email failed:", str(e))
+
 
 
 app = Flask(__name__)
@@ -175,3 +175,4 @@ Error:
         )
 
         return jsonify({"error": str(e)}), 500
+
