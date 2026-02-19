@@ -45,42 +45,66 @@ def generate_report():
         if not video_link:
             return jsonify({"error": "Video link required"}), 400
 
-        combined_data = {
-            "location": "Combined Site Report",
-            "date": "2026-02-11",
-            "drone_id": "MULTI",
-            "video_link": video_link,
-            "violations": []
-        }
-
         json_files = [f for f in os.listdir(TEMP_FOLDER) if f.endswith(".json")]
 
         if not json_files:
             return jsonify({"error": "No JSON files found"}), 400
 
+        combined_data = {
+            "location": "Combined Site Report",
+            "date": "2026-02-11",
+            "drone_id": "",
+            "video_link": video_link,
+            "violations": []
+        }
+
+        first_drone_id = None
+
         # 🔥 Combine all JSON files
-        for file in json_files:
+        for i, file in enumerate(json_files):
             with open(os.path.join(TEMP_FOLDER, file)) as f:
                 data = json.load(f)
+
+                if i == 0:
+                    first_drone_id = data.get("drone_id", "Drone_Report")
+
                 if "violations" in data:
                     combined_data["violations"].extend(data["violations"])
 
-        output_path = "final_report.pdf"
+        # -----------------------------------
+        # 🔥 CLEAN DRONE ID (Remove _Number)
+        # -----------------------------------
+        import re
+
+        if first_drone_id:
+            cleaned_name = re.sub(r'_\d+$', '', first_drone_id)
+        else:
+            cleaned_name = "Drone_Report"
+
+        # 🔥 Capitalize Each Word
+        cleaned_name = cleaned_name.replace("_", " ").title().replace(" ", "_")
+
+        combined_data["drone_id"] = cleaned_name
+
+        output_path = f"{cleaned_name}.pdf"
+
         generate_report_from_json(combined_data, output_path)
 
-        # 🔥 Cleanup after generation
+        # Cleanup temp folder
         shutil.rmtree(TEMP_FOLDER)
         os.makedirs(TEMP_FOLDER, exist_ok=True)
 
         return send_file(
             output_path,
             as_attachment=True,
-            download_name="Final_Report.pdf",
+            download_name=f"{cleaned_name}.pdf",
             mimetype="application/pdf"
         )
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
 
 
 
