@@ -156,6 +156,7 @@ def generate_report():
 
         # Normalize formatting
         cleaned_name = cleaned_name.replace("_", " ").title().replace(" ", "_")
+        cleaned_name = cleaned_name.upper()
 
         combined_data["drone_id"] = cleaned_name
 
@@ -230,5 +231,6 @@ The report has been generated successfully.
             print("⚠ Failure email also failed:", str(email_error))
 
         return jsonify({"error": str(e)}), 500
+
 
 
