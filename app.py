@@ -10,7 +10,20 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from datetime import datetime
 
+import pikepdf
 
+def compress_pdf(input_path, output_path):
+    try:
+        with pikepdf.open(input_path) as pdf:
+            pdf.save(
+                output_path,
+                optimize_streams=True,
+                compress_streams=True,
+                object_stream_mode=pikepdf.ObjectStreamMode.generate
+            )
+        print("✅ PDF compressed successfully")
+    except Exception as e:
+        print("❌ Compression failed:", str(e))
 def send_status_email(subject, body, attachment_path=None):
     import smtplib
     import os
@@ -169,6 +182,18 @@ def generate_report():
         os.makedirs("reports", exist_ok=True)
 
         generate_report_from_json(combined_data, output_path)
+                # -----------------------------------
+        # 4.1️⃣ Compress PDF
+        # -----------------------------------
+        compressed_path = output_path.replace(".pdf", "_COMPRESSED.pdf")
+        
+        compress_pdf(output_path, compressed_path)
+
+# Use compressed version from now on
+output_path = compressed_path
+output_filename = os.path.basename(output_path)
+
+print("✅ Using compressed report:", output_path)
 
         print("✅ Report generated:", output_path)
 
@@ -231,6 +256,7 @@ The report has been generated successfully.
             print("⚠ Failure email also failed:", str(email_error))
 
         return jsonify({"error": str(e)}), 500
+
 
 
 
