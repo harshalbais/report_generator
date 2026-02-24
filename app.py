@@ -2,16 +2,17 @@ from flask import Flask, request, send_file, jsonify
 import os
 import json
 import shutil
-from report import generate_report_from_json
-import smtplib
-import os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
+import re
 from datetime import datetime
-
+from report import generate_report_from_json
 import pikepdf
+from email.message import EmailMessage
+import smtplib
 
+
+# ==========================================
+# PDF Compression
+# ==========================================
 def compress_pdf(input_path, output_path):
     try:
         with pikepdf.open(input_path) as pdf:
@@ -24,10 +25,12 @@ def compress_pdf(input_path, output_path):
         print("✅ PDF compressed successfully")
     except Exception as e:
         print("❌ Compression failed:", str(e))
+
+
+# ==========================================
+# Email Function
+# ==========================================
 def send_status_email(subject, body, attachment_path=None):
-    import smtplib
-    import os
-    from email.message import EmailMessage
 
     recipients = [
         "codequestcrew@gmail.com",
@@ -41,20 +44,15 @@ def send_status_email(subject, body, attachment_path=None):
         msg["To"] = ", ".join(recipients)
         msg.set_content(body)
 
-        # Attach report if available
         if attachment_path and os.path.exists(attachment_path):
             with open(attachment_path, "rb") as f:
-                file_data = f.read()
-                file_name = os.path.basename(attachment_path)
+                msg.add_attachment(
+                    f.read(),
+                    maintype="application",
+                    subtype="pdf",
+                    filename=os.path.basename(attachment_path)
+                )
 
-            msg.add_attachment(
-                file_data,
-                maintype="application",
-                subtype="octet-stream",
-                filename=file_name
-            )
-
-        # SMTP with timeout (IMPORTANT)
         server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
         server.starttls()
         server.login(
@@ -70,11 +68,16 @@ def send_status_email(subject, body, attachment_path=None):
         print("❌ Email failed:", str(e))
 
 
-
+# ==========================================
+# Flask App
+# ==========================================
 app = Flask(__name__)
 
 TEMP_FOLDER = "temp_reports"
+REPORT_FOLDER = "reports"
+
 os.makedirs(TEMP_FOLDER, exist_ok=True)
+os.makedirs(REPORT_FOLDER, exist_ok=True)
 
 
 @app.route("/")
@@ -82,6 +85,9 @@ def home():
     return "Drone Report API Running 🚀"
 
 
+# ==========================================
+# Upload JSON Endpoint
+# ==========================================
 @app.route("/upload-json", methods=["POST"])
 def upload_json():
     try:
@@ -102,6 +108,9 @@ def upload_json():
         return jsonify({"error": str(e)}), 500
 
 
+# ==========================================
+# Generate Report Endpoint
+# ==========================================
 @app.route("/generate-report", methods=["POST"])
 def generate_report():
     try:
@@ -113,26 +122,18 @@ def generate_report():
         video_link = data.get("video_link")
 
         if not video_link:
-            send_status_email(
-                subject="❌ Drone Report Failed",
-                body="Video link was not provided."
-            )
             return jsonify({"error": "Video link required"}), 400
 
         # -----------------------------------
-        # 1️⃣ Collect JSON files
+        # Collect JSON files
         # -----------------------------------
         json_files = [f for f in os.listdir(TEMP_FOLDER) if f.endswith(".json")]
 
         if not json_files:
-            send_status_email(
-                subject="❌ Drone Report Failed",
-                body="No JSON files found in backend."
-            )
             return jsonify({"error": "No JSON files found"}), 400
 
         # -----------------------------------
-        # 2️⃣ Combine JSON Data
+        # Combine Data
         # -----------------------------------
         combined_data = {
             "location": "Combined Site Report",
@@ -153,81 +154,62 @@ def generate_report():
             if i == 0:
                 first_drone_id = file_data.get("drone_id", "Drone_Report")
 
-            if "violations" in file_data:
-                combined_data["violations"].extend(file_data["violations"])
+            combined_data["violations"].extend(file_data.get("violations", []))
 
         # -----------------------------------
-        # 3️⃣ Clean Drone ID
-        # Remove last _number
+        # Clean Drone ID
         # -----------------------------------
-        import re
-
-        if first_drone_id:
-            cleaned_name = re.sub(r'_\d+$', '', first_drone_id)
-        else:
-            cleaned_name = "Drone_Report"
-
-        # Normalize formatting
-        cleaned_name = cleaned_name.replace("_", " ").title().replace(" ", "_")
-        cleaned_name = cleaned_name.upper()
+        cleaned_name = re.sub(r'_\d+$', '', first_drone_id or "Drone_Report")
+        cleaned_name = cleaned_name.replace("_", " ").upper().replace(" ", "_")
 
         combined_data["drone_id"] = cleaned_name
 
         # -----------------------------------
-        # 4️⃣ Generate PDF
+        # Generate PDF
         # -----------------------------------
         output_filename = f"{cleaned_name}.pdf"
-        output_path = os.path.join("reports", output_filename)
-
-        os.makedirs("reports", exist_ok=True)
+        output_path = os.path.join(REPORT_FOLDER, output_filename)
 
         generate_report_from_json(combined_data, output_path)
-                # -----------------------------------
-        # 4.1️⃣ Compress PDF
-        # -----------------------------------
-        compressed_path = output_path.replace(".pdf", "_COMPRESSED.pdf")
-        
-        compress_pdf(output_path, compressed_path)
-
-# Use compressed version from now on
-output_path = compressed_path
-output_filename = os.path.basename(output_path)
-
-print("✅ Using compressed report:", output_path)
 
         print("✅ Report generated:", output_path)
 
         # -----------------------------------
-        # 5️⃣ Send Success Email (Safe)
+        # Compress PDF
         # -----------------------------------
-        try:
-            send_status_email(
-                subject="✅ Drone Report Generated Successfully",
-                body=f"""
+        compressed_path = output_path.replace(".pdf", "_COMPRESSED.pdf")
+
+        compress_pdf(output_path, compressed_path)
+
+        # Replace with compressed version
+        output_path = compressed_path
+        output_filename = os.path.basename(output_path)
+
+        print("✅ Using compressed report:", output_path)
+
+        # -----------------------------------
+        # Send Email
+        # -----------------------------------
+        send_status_email(
+            subject="✅ Drone Report Generated Successfully",
+            body=f"""
 Report Status: SUCCESS
 
 Drone ID: {cleaned_name}
 Total Violations: {len(combined_data['violations'])}
 Video Link: {video_link}
-
-The report has been generated successfully.
 """,
-                attachment_path=output_path
-            )
-        except Exception as email_error:
-            print("⚠ Email sending failed:", str(email_error))
+            attachment_path=output_path
+        )
 
         # -----------------------------------
-        # 6️⃣ Cleanup JSON folder safely
+        # Cleanup JSON files
         # -----------------------------------
-        try:
-            shutil.rmtree(TEMP_FOLDER)
-            os.makedirs(TEMP_FOLDER, exist_ok=True)
-        except Exception as cleanup_error:
-            print("⚠ Cleanup failed:", str(cleanup_error))
+        shutil.rmtree(TEMP_FOLDER)
+        os.makedirs(TEMP_FOLDER, exist_ok=True)
 
         # -----------------------------------
-        # 7️⃣ Return File (Auto Download)
+        # Return File
         # -----------------------------------
         return send_file(
             output_path,
@@ -238,25 +220,4 @@ The report has been generated successfully.
 
     except Exception as e:
         print("❌ Report generation error:", str(e))
-
-        # Send failure email safely
-        try:
-            print("email feature is temporarily down")
-#             send_status_email(
-#                 subject="❌ Drone Report Generation Failed",
-#                 body=f"""
-# Report Status: FAILED
-
-# Error:
-# {str(e)}
-# """
-#             )
-        
-        except Exception as email_error:
-            print("⚠ Failure email also failed:", str(email_error))
-
         return jsonify({"error": str(e)}), 500
-
-
-
-
