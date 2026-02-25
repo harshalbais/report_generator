@@ -305,7 +305,7 @@ class FinalDroneReport:
                         img.save(
                             img_path,
                             "JPEG",
-                            quality=30,          # lower = smaller
+                            quality=40,          # lower = smaller
                             optimize=True,
                             progressive=True
                         )
