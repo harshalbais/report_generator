@@ -297,7 +297,18 @@ class FinalDroneReport:
 
                         img = Image.open(BytesIO(res.content))
                         img = img.convert("RGB")
-                        img.save(img_path)
+                        # Resize for compression
+                        # 🔥 Aggressive resize
+                        img.thumbnail((500, 500))   # reduce resolution
+
+                        # 🔥 Heavy compression
+                        img.save(
+                            img_path,
+                            "JPEG",
+                            quality=30,          # lower = smaller
+                            optimize=True,
+                            progressive=True
+                        )
                     except Exception as e:
                           print(f"❌ Failed to download image {row['id']}: {e}")
 
