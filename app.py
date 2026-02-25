@@ -9,69 +9,9 @@ import pikepdf
 from email.message import EmailMessage
 import smtplib
 
-
-# ==========================================
-# PDF Compression
-# ==========================================
-def compress_pdf(input_path, output_path):
-    try:
-        with pikepdf.open(input_path) as pdf:
-            pdf.save(
-                output_path,
-                optimize_streams=True,
-                compress_streams=True,
-                object_stream_mode=pikepdf.ObjectStreamMode.generate
-            )
-        print("✅ PDF compressed successfully")
-    except Exception as e:
-        print("❌ Compression failed:", str(e))
-
-
-# ==========================================
-# Email Function
-# ==========================================
-def send_status_email(subject, body, attachment_path=None):
-
-    recipients = [
-        "codequestcrew@gmail.com",
-        "hbphysics332@gmail.com"
-    ]
-
-    try:
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = os.environ.get("EMAIL_USER")
-        msg["To"] = ", ".join(recipients)
-        msg.set_content(body)
-
-        if attachment_path and os.path.exists(attachment_path):
-            with open(attachment_path, "rb") as f:
-                msg.add_attachment(
-                    f.read(),
-                    maintype="application",
-                    subtype="pdf",
-                    filename=os.path.basename(attachment_path)
-                )
-
-        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=10)
-        server.starttls()
-        server.login(
-            os.environ.get("EMAIL_USER"),
-            os.environ.get("EMAIL_PASS")
-        )
-        server.send_message(msg)
-        server.quit()
-
-        print("✅ Email sent successfully")
-
-    except Exception as e:
-        print("❌ Email failed:", str(e))
-
-
-# ==========================================
-# Flask App
-# ==========================================
-app = Flask(__name__)
+# ======================================================
+# CONFIG
+# ======================================================
 
 TEMP_FOLDER = "temp_reports"
 REPORT_FOLDER = "reports"
@@ -79,15 +19,47 @@ REPORT_FOLDER = "reports"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 os.makedirs(REPORT_FOLDER, exist_ok=True)
 
+app = Flask(__name__)
+
+# ======================================================
+# SAFE PDF COMPRESSION (OVERWRITE SAME FILE)
+# ======================================================
+
+def compress_pdf(input_path):
+    try:
+        with pikepdf.open(input_path, allow_overwriting_input=True) as pdf:
+            pdf.save(
+                input_path,
+                compress_streams=True,
+                object_stream_mode=pikepdf.ObjectStreamMode.generate
+            )
+
+        print("✅ PDF compressed successfully")
+        return True
+
+    except Exception as e:
+        print("⚠ Compression skipped:", str(e))
+        return False
+
+# ======================================================
+# SAFE EMAIL FUNCTION (OPTIONAL)
+# ======================================================
+
+def send_status_email(subject, body, attachment_path=None):
+    print("vo actually ye service temporily close h tho email sent nahi hoga  ")
+
+# ======================================================
+# ROUTES
+# ======================================================
 
 @app.route("/")
 def home():
-    return "Drone Report API Running 🚀"
+    return "🚀 Drone Report API Running"
 
+# ======================================================
+# UPLOAD JSON
+# ======================================================
 
-# ==========================================
-# Upload JSON Endpoint
-# ==========================================
 @app.route("/upload-json", methods=["POST"])
 def upload_json():
     try:
@@ -102,17 +74,18 @@ def upload_json():
         with open(file_path, "w") as f:
             json.dump(data, f)
 
-        return jsonify({"message": "JSON stored in backend"}), 200
+        return jsonify({"message": "JSON stored successfully"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ======================================================
+# GENERATE REPORT
+# ======================================================
 
-# ==========================================
-# Generate Report Endpoint
-# ==========================================
 @app.route("/generate-report", methods=["POST"])
 def generate_report():
+
     try:
         data = request.get_json()
 
@@ -124,17 +97,14 @@ def generate_report():
         if not video_link:
             return jsonify({"error": "Video link required"}), 400
 
-        # -----------------------------------
-        # Collect JSON files
-        # -----------------------------------
         json_files = [f for f in os.listdir(TEMP_FOLDER) if f.endswith(".json")]
 
         if not json_files:
             return jsonify({"error": "No JSON files found"}), 400
 
-        # -----------------------------------
-        # Combine Data
-        # -----------------------------------
+        # -----------------------------
+        # Combine JSON Data
+        # -----------------------------
         combined_data = {
             "location": "Combined Site Report",
             "date": datetime.now().strftime("%Y-%m-%d"),
@@ -154,19 +124,20 @@ def generate_report():
             if i == 0:
                 first_drone_id = file_data.get("drone_id", "Drone_Report")
 
-            combined_data["violations"].extend(file_data.get("violations", []))
+            combined_data["violations"].extend(
+                file_data.get("violations", [])
+            )
 
-        # -----------------------------------
+        # -----------------------------
         # Clean Drone ID
-        # -----------------------------------
+        # -----------------------------
         cleaned_name = re.sub(r'_\d+$', '', first_drone_id or "Drone_Report")
         cleaned_name = cleaned_name.replace("_", " ").upper().replace(" ", "_")
-
         combined_data["drone_id"] = cleaned_name
 
-        # -----------------------------------
+        # -----------------------------
         # Generate PDF
-        # -----------------------------------
+        # -----------------------------
         output_filename = f"{cleaned_name}.pdf"
         output_path = os.path.join(REPORT_FOLDER, output_filename)
 
@@ -174,22 +145,17 @@ def generate_report():
 
         print("✅ Report generated:", output_path)
 
-        # -----------------------------------
-        # Compress PDF
-        # -----------------------------------
-        compressed_path = output_path.replace(".pdf", "_COMPRESSED.pdf")
+        # -----------------------------
+        # Compress (Overwrite Same File)
+        # -----------------------------
+        if compress_pdf(output_path):
+            print("✅ Using compressed report")
+        else:
+            print("⚠ Using original PDF")
 
-        compress_pdf(output_path, compressed_path)
-
-        # Replace with compressed version
-        output_path = compressed_path
-        output_filename = os.path.basename(output_path)
-
-        print("✅ Using compressed report:", output_path)
-
-        # -----------------------------------
-        # Send Email
-        # -----------------------------------
+        # -----------------------------
+        # Send Email (Optional)
+        # -----------------------------
         send_status_email(
             subject="✅ Drone Report Generated Successfully",
             body=f"""
@@ -202,17 +168,17 @@ Video Link: {video_link}
             attachment_path=output_path
         )
 
-        # -----------------------------------
+        # -----------------------------
         # Cleanup JSON files
-        # -----------------------------------
+        # -----------------------------
         shutil.rmtree(TEMP_FOLDER)
         os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-        # -----------------------------------
-        # Return File
-        # -----------------------------------
+        # -----------------------------
+        # Return PDF
+        # -----------------------------
         return send_file(
-            output_path,
+            os.path.abspath(output_path),
             as_attachment=True,
             download_name=output_filename,
             mimetype="application/pdf"
@@ -221,3 +187,10 @@ Video Link: {video_link}
     except Exception as e:
         print("❌ Report generation error:", str(e))
         return jsonify({"error": str(e)}), 500
+
+# ======================================================
+# RUN SERVER
+# ======================================================
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)
